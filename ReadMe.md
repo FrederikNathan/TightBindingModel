@@ -64,24 +64,24 @@ The elements of X can subsequently be set, using X[i,j,k]=Mat, or X[i,j,k][a,b]=
 
 ### Useful methods 
 
-### Arithmetics
+#### Arithmetics
 Multiplication, addition and subtraction are defined between BZOs of the same shape. Here the operation returns the corresponding BZO. I.e., if A and B are the BZO representing the BZ field F(k) and G(k), A*B represents F(k)*G(k). Sums and products of BZOs are computed efficiently from IndList and ObjList. 
 
 Moreover, scalar multiplication and division are defined.
 
-### MergeBZOs(BZOarray)
+#### MergeBZOs(BZOarray)
 Convert an array of BZO's into a single BZO. The input BZO's must be of the same type and shape. The Output BZO is an array of shape
 shape(BZOarray), such that
 
 Out[a,b,c,i,j] = BZOArray[i,j][a,b,c]
 
-### ObjList(), IndList()
+#### ObjList(), IndList()
 These methods return ObjList and IndList, respectively. Use this to directly access the raw data of the BZO in an efficient way. 
  
-### Gradient()
+#### Gradient()
 Computes BZO corresponding to the gradient \partial _{k_i}F(k). This is very easy to compute from ObjList and IndList
  
-### slice()
+#### slice()
 Returns slice of a multi-dimensional BZO such that, with
 Out=BZO.slice(Indices), Out(k) = BZO(k)[Indices]. Here indices can
 be numbers or slices.
