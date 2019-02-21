@@ -5,7 +5,7 @@ Created on Wed Aug  8 11:10:57 2018
 
 @author: frederik
 """
-
+from builtins import sum as BuiltinSum 
 import sys
 from scipy.linalg import *
 from scipy import *
@@ -19,7 +19,8 @@ from scipy.misc import factorial as factorial
 import datetime
 import logging as l
 from numpy import ufunc as ufunc
-
+import numpy as np
+import inspect 
 import time
 #import scipy.ufunc as ufunc
 
@@ -175,6 +176,10 @@ class BZO:
             raise ValueError("BZO must be defined either from (IndList,ObjList), from array of BZOs or as an empty BZO")
 
 
+    # =========================================================================
+    # 1: Intrinsic methods and objects (methods needed for BZO to function)
+    # =========================================================================
+    
     def SetLists(self,IndList,ObjList):
         """ Set IndList and ObjList for the BZO"""
 
@@ -269,8 +274,7 @@ class BZO:
         dimensions.
         """
 
-        return sum((Ind[0][n]*self.__IndexCounter**(self.__Dimension-n-1) for n in range(0,self.__Dimension)))
-
+        return BuiltinSum((Ind[0][n]*self.__IndexCounter**(self.__Dimension-n-1) for n in range(0,self.__Dimension)))
 
     def __CheckIndices(self,Index):
         # Checks that an index in IndList is a tuple of length self.__Dimension
@@ -311,48 +315,127 @@ class BZO:
             
             return -1-listindex
 
-
-
-    def __getitem__(self,*Index):
-        """ 
-        Return ObjList[z] where IndexList[z]=Index. If IndexList does not 
-        contain Index, return self.__Zero (See below for definition). 
-        Note that this method can be used to set elements of BZO, using 
-        BZO[Index][a,b] = x,
+    def __SortLists(self):
+        """
+        Sorts indlist, objlist and numlist according to their NumList values.
         """
         
-        # Find z where IndexList[z]=Index        
-        n = self.__FindIndex(*Index)
+        AS=argsort(self.__NumList)
+
+        self.__IndList=[self.__IndList[i] for i in AS]#list(self.__IndList[AS])
+        self.__ObjList=[self.__ObjList[i] for i in AS]#list(self.__IndList[AS])
+        self.__NumList=[self.__NumList[i] for i in AS]
 
 
-        if n>=0 :
-            # Return z if search was successful
+    def __InputInterpreter(self,*args):
+        """
+        Interprets argument given to __call__ method. (Only used within
+        __call__ method). See __call__method.
+        """
+
+        # Verify that __InputInterpreter is used by the call method
+        if not (inspect.stack()[1].function)=="__call__":
+            raise TypeError("InputInterpreter can only be used by BZO's __call__ method")
+        
+        
+        # Distinguish whether input is vectorspan or array
+        if len(args)==self.__Dimension:
+            # If self.__Dimension inputs, input is vector-span format 
+
+            # Convert vectors into 1-d arrays
+            VectorLists = [array(x,ndmin=1) for x in args]
             
-            return self.__ObjList[n]
+            # Ensure that the inputs are all 1-d array
+            RightShape=prod([len(shape(x))==1 for x in VectorLists])
+            
+            if RightShape:                
+                Format="VectorSpan"
 
-        else:
-            # Otherwise, return zero object, with called index set to Index
-            self.__Zero.CalledIndex=tuple(*Index)
+                return [VectorLists,Format]
 
-            return self.__Zero
+            # Otherwise pass, and end up at ValueError in the bottom
+            else:
+                pass
 
+                
+        elif len(args)==1:
+            # If 1 input, input is array format
+            K = args[0]
+
+
+            # Ensure that K is array
+            if type(K)==ndarray:
+                Karray=K
+
+                Format="Array"
+
+                # Ensure that array has right size
+                if (type(Karray)==ndarray) and (shape(Karray)[0]==self.__Dimension):
+                    return [Karray,Format]
+                
+                else:
+                    pass
     
+            else:
+                pass
+                    
+        else:
+            pass
+        
+        
+        raise ValueError(f"Input must either be {self.__Dimension} vectors, or ndarray  of dimension {self.__Dimension} x *")
+
+
+    def __FindIndexSpan(self):
+        
+        """ 
+        Generate IndexSpanPointerList and IndexSpanList 
+
+        These lists together constitute a compressed representation of IndexList, such that 
+        IndexList[z] = [IndexSpanList[1][IndexSpanPointerList[1][z]], ... 
+                          IndexSpanList[d][IndexSpanPointerList[d][z]]]
+
+        IndexSpanPointerList and IndexSpanList  are properties of the BZO. They
+        are only needed when __call__ is used, with the VectorSpan format. 
+        Therefore, __FindIndexSpan is only called by the BZO's __call__ method. 
+        """
+        
+        # Ensure that function is used by call-method. 
+        if not (inspect.stack()[1].function)=="__call__":
+            raise TypeError("FindIndexSpan can only be used by BZO's __call__ method")
+
+        self.__IndexSpanList=[]
+        self.__IndexSpanPointerList=[]
+
+        for d in range(0,self.__Dimension):
+
+            List = list(set([Ind[d] for Ind in self.__IndList]))
+            List.sort()
+
+            self.__IndexSpanList.append(List)
+
+            IndexSpanPointer  = [searchsorted(List,Ind[d]) for Ind in self.__IndList]
+
+            self.__IndexSpanPointerList.append(IndexSpanPointer)
+            
     class __ZeroObject:
         """
-        Zero object: this object is returned if one used BZO[Ind]
-        (BZO.__get__(Ind)) where Ind is not in IndList. The definition of
-        ZeroObject allows to use BZO[Ind][a,b] in computations (as a matrix of
-        zeros), and set the BZO with BZO[Ind][a,b] = x, even if Ind is not yet
-        in IndList.
+        Zero object: this object is returned if one used BZO[Ind] where Ind is 
+        not in IndList. The definition of ZeroObject allows to use 
+        BZO[Ind][a,b] in computations (as a matrix of zeros), and set the BZO 
+        with BZO[Ind][a,b] = x, even if Ind is not yet in IndList.
         
         ZeroObject is only used by BZO's __get__ method.
         """
+        
         
         def __init__(self,bzo):
             """ 
             ZeroObject should always be defined with the host BZO as argument. 
             When called in arithmetic computations, it returns a matrix with 
-            zeros in shape BZO.__shape
+            zeros in shape BZO.__shape. The only respect where it does not act 
+            as a zero-matrix is when the __set__ method is used on the Zero-
+            object
             """
             
             # Set intrinsic parameters           
@@ -360,7 +443,7 @@ class BZO:
             # Shape
             self.__shape=bzo.shape()
             
-            # Matrix to be used for computations 
+            # Matrix to be used for computations (zero matrix)
             self.__Mat = zeros(self.__shape,dtype=complex)
             
             # Host BZO
@@ -379,23 +462,26 @@ class BZO:
         def __setitem__(self,Index,Value):
             # Ensure that after BZO[Ind][1,1] = x, BZO[Ind] returns a matrix array([[0,0],[0,x]]) when BZO[Ind] was initially empty
             
+
             # Set matrix to enter in BZO's new ObjList
             NewMat = 1*self.__Mat
-            
             NewMat[Index]=Value
             
             # Add new element to BZO's indlist and objlist
             self.__BZO[self.CalledIndex]=NewMat
 
 
-        # Define standard operarations for zero object. In all these aspects, ZeroObj acts as a matrix of shape self.__shape() with all zeros. 
+        ### Define builtin methods zero-object. 
+        # In all these aspects, ZeroObj acts as a matrix of shape self.__shape() with all zeros. 
+        
+        # Printing methods
         def __str__(self):
             return str(self.__Mat)
 
         def __repr__(self):
             return self.__str__()
 
-
+        # Arithmetics 
         def __add__(self,x):
             return self.__Mat + x
 
@@ -408,7 +494,6 @@ class BZO:
         def __rmul__(self,x):
             return self * x
 
-
         def __sub__(self,x):
             return self+(-x)
 
@@ -418,7 +503,35 @@ class BZO:
         def truediv(self,x):
             return (1/x)*self
 
+    # =========================================================================
+    # 2: Basic methods (get, set, print, call)
+    # =========================================================================
+    
+    def __getitem__(self,*Index):
+        """ 
+        Return ObjList[z] where IndexList[z]=Index. If IndexList does not 
+        contain Index, return self.__Zero (See below for definition). 
+        Note that this method can not only be used for reading the elements of 
+        the BZO, but can also be used to set them. This is done using 
+        
+        BZO[Index][a,b] = x,
+        
+        """
+        
+        # Find z where IndexList[z]=Index        
+        n = self.__FindIndex(*Index)
 
+
+        if n>=0 :
+            # Return z if search was successful
+            
+            return self.__ObjList[n]
+
+        else:
+            # Otherwise, return zero object, with called index set to Index
+            self.__Zero.CalledIndex=tuple(*Index)
+
+            return self.__Zero
 
     def __setitem__(self,Index,Value):
         """ 
@@ -458,78 +571,222 @@ class BZO:
             self.__ObjList.insert(newIndex,Value)
             self.__NumList.insert(newIndex,self.__IndToNum(Index))
 
-    def __SortLists(self):
-        """
-        Sorts indlist, objlist and numlist according to their NumList values.
-        """
-        
-        AS=argsort(self.__NumList)
+    def __call__(self,*args):
 
-        self.__IndList=[self.__IndList[i] for i in AS]#list(self.__IndList[AS])
-        self.__ObjList=[self.__ObjList[i] for i in AS]#list(self.__IndList[AS])
-        self.__NumList=[self.__NumList[i] for i in AS]
-
-    def NNZ(self):
-        """
-        Returns number of nonzero elements in ObjList
-        """
-        return len(self.__IndList)
-
-    def ObjList(self):
-        """ Returns ObjList"""
-        return self.__ObjList[0:]*1
-
-    def IndList(self):
-        """ Returns IndList"""
-
-        return self.__IndList[0:]*1  #Uses 0: to ensure that returned object is plain data, not a reference to self.__IndList
-
-    def __mul__(self,y):
         """ 
-        Multiplication. If F1(k) is multiplied with scalar lambda, returns lambda * F(k)
-        If mulitplied with BZO of same shape, returns Out(k) = F1(k)*F2(k)"""
+        OutputArray = BZO(*CrystalMomenta)
 
-        # Determine whether BZO multiplication or scalar multiplication is used 
+        Evaluates BZO at crystal momenta given as argument. Input must be in
+        either the Array format, or the VectorSpan format (see below). The
+        latter is very efficient, if one needs to calculate a large number of
+        k-points in a regular array.
         
-        if type(y)==type(self):
-            # BZO multiplication:
+        Array format:
+        
+        Input must be array of crystal momenta, where the first index
+        determines the spatial index of the crystal momenta. I.e., for 3d
+        array of crystal-momenta \vec k_{abc}, Karray should be formatted such
+        that Karray[i,a,b,c] = k_{abc}^i. In this case, OutputArray[i,j,a,b,c]
+        gives BZO(Karray[:,a,b,c])[i,j]
+        
+        VectorSpan format:
+        
+        Input must be self.__Dimension one-dimensional vectors Kx, Ky, Kz (for
+        3D). Output is an array of shape self.__shape() x Nx x Ny x Nz, where
+        Ni is the length of Ki. In this case OutputArray[i,j][a,b,c] =
+        BZO(Kx[a],Ky[b],Kz[c]).
+        
+        There is a special case, when all Ki are 1 (Ki=kx). In this case,
+        OutputArray[i,j] = BZO(kx,ky,kz)
+
+        """
+
+        # Detect method of input, and convert to either of the two standard format
+        [Input,Format]=self.__InputInterpreter(*args)
+
+        # Array format:
+        if Format=="Array":
+            Karray =Input
+
+            # Find shape of output array:
+            OutShape = shape(Karray)[1:]
+            Karray_dimension=len(OutShape)
+            OutMatShape = self.__shape+OutShape
             
-            # Create output BZO
-            Out = self._CreateSameType()
+            # Generate output array
+            OutMat = zeros(OutMatShape,dtype=self.__dtype)
 
-            # Set ObjList and IndList of output BZO by convolving lists of the two multiplies BZOs 
-            for Ind1 in self.IndList():
+            # List argument to be passed to Einstein summation
+            EinsteinList = [x for x in range(0,Karray_dimension+1)]
+
+            # Iterate over all elements in IndList, ObjList
+            for n in range(0,self.NNZ()):
+
+                Ind = array(self._BZO__IndList[n])
+                C   = self._BZO__ObjList[n]
+
+                # Compute array of phase-factors for each momentum in Karray
+                PhaseMat = exp(-1j*einsum(Ind,[0],Karray,EinsteinList))
+
+                ### Compute contribution to output from Harmonic Ind
                 
-                Obj1=self[Ind1]
-                
-                for Ind2 in y.IndList():
-                    Obj2=y[Ind2]
+                # If BZO is not a scalar, use multiply.outer method to generate array with right shape
+                if not self.__shape ==():
+                    dO = multiply.outer(C,PhaseMat)
+                    
+                # Otherwise compute output by simple multiplication
+                else :
+                    dO = C*PhaseMat
 
-                    Ind3 = tuple(add(Ind1,Ind2))
-                    Out[Ind3] += Obj1*Obj2
+                # Update output
+                OutMat = OutMat + dO
 
 
-        else:
-            # Scalar multiplication
+            # Return output when done with iteration
+            return OutMat
+
+        # VectorSpan format -- here a the phases of the harmonics are computed as a direct product.
+        elif Format=="VectorSpan":
+            Vectors= Input
+
+            # Compute shape of output array
+            OutShape = tuple([len(v) for v in Vectors])
+            OutDimension=len(OutShape)
+            OutMatShape = self.__shape+OutShape
             
-            # Create output BZO
-            Out = self._CreateSameType()
+            # Initialize output array
+            OutMat = zeros(OutMatShape,dtype=self.__dtype)
 
-            # Set output ObjList by multiplying elements in input ObjList with scalar
-            Out.SetLists(self.IndList(),[y*x for x in self.__ObjList])
+            # Generate IndexSpan listis (see __FindIndexSpan() method). 
+            self.__FindIndexSpan()
 
+            VectorList=[]
+            MultList=[]
+            
+            # compute output from index-span lists 
+            Module.OutArrayList= []
+            for d in range(0,self.__Dimension):
+                IS = self.__IndexSpanList[d]
+                V = Vectors[d]
+                MultList.append( [exp(-1j*V*Index) for Index in IS])
+
+            # Compute BZO at vector span, using efficient algorithm      
+            Module.OutArrayList = [zeros(OutShape[-d:],dtype=complex) for d in range(2,self.__Dimension+1)]
+            dO = zeros(OutMatShape,dtype=complex)
+
+            def Multiply(Args):
+                Nargs = len(Args)
+                if Nargs>1:
+
+                    return multiply.outer(Args[0],Multiply(Args[1:]),out=Module.OutArrayList[Nargs-2])
+                else:
+                    return Args[0]
+
+            for n in range(0,self.NNZ()):
+
+                C   = self._BZO__ObjList[n]
+                
+                VecList=[MultList[d][self.__IndexSpanPointerList[d][n]] for d in range(0,self.__Dimension)]
+
+                PhaseMat = Multiply(VecList)
+
+                if not self.__shape ==():
+                    multiply.outer(C,PhaseMat,out = dO)
+
+                else :
+                    multiply(C,PhaseMat,out = dO)
+
+                OutMat = OutMat + dO           
+            
+            del Module.OutArrayList 
+            
+            
+            # Convert to smaller matrix, if input vectors all have length 1.
+            if prod([len(x)==1 for x in Vectors]):
+                SliceTuple = tuple([slice(self.shape()[d]) for d in range(0,len(self.shape()))]+[0]*self.__Dimension)
+                OutMat=OutMat[SliceTuple]
+        
+                
+            # Return result
+            return OutMat
+
+    def slice(self,*Indices):
+        """ 
+        Returns slice of BZO such that, with Out=BZO.slice(Indices),  
+        Out(k) = BZO(k)[Indices].
+        """
+        
+        # Convert Indices to tuple
+        Ind = tuple(Indices)
+
+        # Find shape of output
+        try:
+            OutShape=shape((1*self[(0,)*Dimension])[Indices])
+        except:
+            raise IndexError("Wrong format for indices")
+
+        # Construct output Indlist and objlist
+        
+        IndListOut = self.IndList()
+        ObjListOut = [X[Indices] for X in self.ObjList]
+        
+        # Construct output BZO
+        Out = BZO(IndListOut,ObjListOut,dtype=self.dtype())
+        
+        # Remove any redundant zeros 
+        Out.CleanUp()
+        
         return Out
+    
 
+    # Delete element in BZO()
+    def __delitem__(self,Ind):
+        """
+        Delete Ind'th harmonic (i.e., remove from IndList and ObjList)
+        """
+        
+        n=self.__FindIndex(Ind)
 
-    def __rmul__(self,x):
-        return self*x
+        if not n==None :
 
+            del self.__IndList[n]
+            del self.__ObjList[n]
+            del self.__NumList[n]
+        
+        else:
+            pass
+        
+    # Printing functions
+    def __repr__(self):
 
-    def __truediv__(self,y):
-        """Division: only division with scalars is defined""" 
-        return self*(1/y)
+        # Print all elements only if there are les than 20, and more than 0.  
+        if self.NNZ()>0 and self.NNZ ()< 20:
 
+            Str = "Type: %s"%str(self.__class__.__name__)+"\n\n"
 
+            for Ind in self.__IndList:
+                Str += str(Ind)+": \n \n"
+                Str += self[Ind].__str__()
+                Str += "\n \n \n"
+
+        # 
+        elif self.NNZ()==0:
+            Str = "%s object with all zeros"%str(self.__class__.__name__)
+
+        elif self.NNZ()>20:
+            Str = "%s of shape %s with %d Matrices (too long to show here) " %(self.__class__.__name__,str(self.shape()),self.NNZ())
+
+        return Str
+
+    def __str__(self):
+        return self.__repr__()        
+
+  
+    # =========================================================================
+    # 3: Arithmetic operations         
+    # =========================================================================
+    
+    # Addition of BZO's -- modified for subclasses
     def __add__(self,Obj):
         """Addition of BZO with another BZO X""" 
         
@@ -600,6 +857,7 @@ class BZO:
 
 
         else:
+            
             # If the index counters are not the same, add the two BZO's using the elementwise __set__ method
             Out.SetLists(IndListOut,ObjListOut)
 
@@ -615,10 +873,7 @@ class BZO:
 
         return self + Obj
 
-    def _CreateSameType(self):
-        """ Creates empty BZO of same type as self"""
-        return BZO(shape=self.__shape,dtype=self.__dtype)
-
+    # Subtraction of BZOs
     def __sub__(self,Obj):
 
         return (-1)*Obj + self
@@ -627,170 +882,82 @@ class BZO:
 
         return self-Obj
 
-    def __InputInterpreter(self,*args):
-        """Interprets input from function call. Input can be of 3 types: VectorSpan, List, or Array"""
+    # Multiplication of BZOs
+    def __mul__(self,y):
+        """ 
+        Multiplication. If F1(k) is multiplied with scalar lambda, returns lambda * F(k)
+        If mulitplied with BZO of same shape, returns Out(k) = F1(k)*F2(k)
+        """
 
-        if len(args)==self.__Dimension:
-            VectorLists = [array(x,ndmin=1) for x in args]
+        # Determine whether BZO multiplication or scalar multiplication is used 
+        
+        if type(y)==type(self):
+            # BZO multiplication:
+            
+            # Create output BZO
+            Out = self._CreateSameType()
 
-            Format="VectorSpan"
+            # Set ObjList and IndList of output BZO by convolving lists of the two multiplies BZOs 
+            for Ind1 in self.IndList():
+                
+                Obj1=self[Ind1]
+                
+                for Ind2 in y.IndList():
+                    Obj2=y[Ind2]
 
-            return [VectorLists,Format]
-
-        elif len(args)==1:
-
-            K = args[0]
-
-            if type(K)==list:
-                Karray=array(args[0]).T
-
-                Format="List"
-            else:
-                Karray=K
-
-                Format="Array"
+                    Ind3 = tuple(add(Ind1,Ind2))
+                    Out[Ind3] += Obj1*Obj2
 
 
-            if (not type(Karray)==ndarray) or (not shape(Karray)[0]==self.__Dimension):
-                raise IndexError("Argument must be ndarray of dimension %d x *"%self.__Dimension )
-
-            return [Karray,Format]
         else:
-            raise ValueError("Did not understand input")
-
-
-    def __FindIndexSpan(self):
-
-        self.__IndexSpanList=[]
-        self.__IndexSpanPointerList=[]
-
-        for d in range(0,self.__Dimension):
-
-            List = list(set([Ind[d] for Ind in self.__IndList]))
-            List.sort()
-
-            self.__IndexSpanList.append(List)
-
-            IndexSpanPointer  = [searchsorted(List,Ind[d]) for Ind in self.__IndList]
-
-            self.__IndexSpanPointerList.append(IndexSpanPointer)
-
-
-
-    def __call__(self,*args):
-
-        """ Evaluate function at kvec (kvec is a momentum or array of momenta).
-        Returns value, or array of values"""
-
-        [Input,Format]=self.__InputInterpreter(*args)
-
-
-        if Format=="List" or Format=="Array":
-            Karray =Input
-
-
-            OutShape = shape(Karray)[1:]
-
-            Karray_dimension=len(OutShape)
-
-            OutMatShape = self.__shape+OutShape
-            OutMat = zeros(OutMatShape,dtype=self.__dtype)
-
-
-
-
-            ## List argument to be passed to Einstein summation
-            EinsteinList = [x for x in range(0,Karray_dimension+1)]
-
-            ## Generate lists with exponential vectors
-
-
-            for n in range(0,self.NNZ()):
-
-                Ind = array(self._BZO__IndList[n])
-                C   = self._BZO__ObjList[n]
-
-
-                PhaseMat = exp(-1j*einsum(Ind,[0],Karray,EinsteinList))
-
-                if not self.__shape ==():
-
-                    dO = multiply.outer(C,PhaseMat)
-                else :
-                    dO = C*PhaseMat
-
-                OutMat = OutMat + dO
-
-
-
-
-            if Format=="Array":
-                return OutMat
-
-            elif Format=="List":
-                return list(OutMat)
-
-        elif Format=="VectorSpan":
-
-            Vectors= Input
-
-            OutShape = tuple([len(v) for v in Vectors])
-
-
-            OutDimension=len(OutShape)
-
-            OutMatShape = self.__shape+OutShape
-            OutMat = zeros(OutMatShape,dtype=self.__dtype)
-
-
-            self.__FindIndexSpan()
-
-            VectorList=[]
-            MultList=[]
-
-            Module.OutArrayList= []
-            for d in range(0,self.__Dimension):
-                IS = self.__IndexSpanList[d]
-                V = Vectors[d]
-                MultList.append( [exp(-1j*V*Index) for Index in IS])
-
-
-            Module.OutArrayList = [zeros(OutShape[-d:],dtype=complex) for d in range(2,self.__Dimension+1)]
-            dO = zeros(OutMatShape,dtype=complex)
-
-
-            def Multiply(Args):
-                Nargs = len(Args)
-                if Nargs>1:
-
-                    return multiply.outer(Args[0],Multiply(Args[1:]),out=Module.OutArrayList[Nargs-2])
-                else:
-                    return Args[0]
-#
-
-
-            for n in range(0,self.NNZ()):
-
-                C   = self._BZO__ObjList[n]
-
-
-                VecList=[MultList[d][self.__IndexSpanPointerList[d][n]] for d in range(0,self.__Dimension)]
-
-
-                PhaseMat = Multiply(VecList)
-
-                if not self.__shape ==():
-
-                    multiply.outer(C,PhaseMat,out = dO)
-
-                else :
-                    multiply(C,PhaseMat,out = dO)
-
-                OutMat = OutMat + dO
-
-#                print(PhaseMat)
-
-            return OutMat
+            # Scalar multiplication
+            
+            # Create output BZO
+            Out = self._CreateSameType()
+
+            # Set output ObjList by multiplying elements in input ObjList with scalar
+            Out.SetLists(self.IndList(),[y*x for x in self.__ObjList])
+
+        return Out
+  
+    
+    def __rmul__(self,x):
+        return self*x
+
+    # Division of BZO with scalar
+    def __truediv__(self,y):
+        """Division: only division with scalars is defined""" 
+        return self*(1/y)
+
+    # =============================================================================
+    # 4: Specific methods (useful methods, that are specific to BZO's)
+    # =============================================================================
+    
+    def _CreateSameType(self):
+        """
+        Creates empty BZO of same type as self
+        """
+        return BZO(shape=self.__shape,dtype=self.__dtype)
+
+
+    def NNZ(self):
+        """
+        Returns number of nonzero elements in ObjList
+        """
+        return len(self.__IndList)
+
+    def ObjList(self):
+        """ 
+        Returns ObjList
+        """
+        return self.__ObjList[0:]*1 #Uses 0: to ensure that returned object is plain data, not a reference to self.__IndList
+
+    def IndList(self):
+        """ 
+        Returns IndList
+        """
+
+        return self.__IndList[0:]*1  #Uses 0: to ensure that returned object is plain data, not a reference to self.__IndList
 
 
     def Gradient(self):
@@ -814,37 +981,17 @@ class BZO:
 
 
     def shape(self):
-        """ Returns shape of BZO"""
+        """ 
+        Returns shape of BZO
+        """
         return self.__shape
 
 
     def dtype(self):
-        """Returns data type of BZO"""
+        """
+        Returns data type of BZO
+        """
         return self.__dtype
-
-    def __repr__(self):
-
-        if self.NNZ()>0 and self.NNZ ()< 20:
-
-            Str = "Type: %s"%str(self.__class__.__name__)+"\n\n"
-
-            for Ind in self.__IndList:
-                Str += str(Ind)+": \n \n"
-                Str += self[Ind].__str__()
-                Str += "\n \n \n"
-
-
-        elif self.NNZ()==0:
-            Str = "%s object with all zeros"%str(self.__class__.__name__)
-
-        elif self.NNZ()>20:
-            Str = "%s of shape %s with %d Matrices (too long to show here) " %(self.__class__.__name__,str(self.shape()),self.NNZ())
-
-        return Str
-
-    def __str__(self):
-        return self.__repr__()
-
 
     def conj(self):
         """ Returns conjugate transpose of BZO"""
@@ -858,38 +1005,6 @@ class BZO:
 
         return Out
 
-    def slice(self,*Indices):
-        """ Return BZO such that, with Y=BZO.slice(Indices),  Y(k) = BZO(k)(Indices)."""
-
-        Ind = tuple(Indices)
-
-
-        try:
-
-            OutShape=shape((1*self[(0,)*Dimension])[Indices])
-        except:
-            raise IndexError("Wrong format for indices")
-
-        Out = BZO(shape=OutShape)
-
-        for Ind in self.IndList():
-
-            Out[Ind]=array(self[Ind][Indices])
-
-        Out.CleanUp()
-
-        return Out
-
-    def __delitem__(self,Ind):
-
-        n=self.__FindIndex(Ind)
-
-        if not n==None :
-
-            del self.__IndList[n]
-            del self.__ObjList[n]
-            del self.__NumList[n]
-
     def CleanUp(self):
         """ Remove negligible elements in IndList and ObjList. By default,
         elements are discared, if they have max-norm less than 1e-10
@@ -898,33 +1013,34 @@ class BZO:
             if amax(abs(self[Ind]))<1e-10:
                 del self[Ind]
 
-
-
     def Norm(self):
         """ Returns norm \int d^D k \Tr (F^\dagger(k) F(k))"""
 
         return sqrt(sum([sum(abs(x)**2) for x in self.__ObjList]))
 
-def Karray(*args):
-    """TBA      """
-    return None
 
 def MergeBZOs(FieldArray):
-    """Combine field from array of fields"""
+    """
+    Combine field from array of BZO's. The input BZO's must be of the same type
+    and shape. The Output BZO is an array of shape shape(FieldArray), such that 
+    
+    Out(k)[a,b,c,i,j] = FieldArray[i,j](k)[a,b,c]
+    """
+    
+    # Shape of output array
     shape0=shape(FieldArray)
 
+    # Flatten input array (shape of output is stored)
     FlatArray = FieldArray.flatten()
     N_elements = len(FlatArray)
 
+    # Check that input BZOs in FieldArray are of the same type. 
     try:
-
         shape1=FlatArray[0].shape()
         type1=type(FlatArray[0])
 
-
         SameType = prod([type(x)==type1 for x in FlatArray])
         SameShape = prod([x.shape()==shape1 for x in FlatArray])
-
 
         if not (SameType and SameShape):
             raise ValueError("Argument must be array of objects of the same type and shape")
@@ -932,18 +1048,14 @@ def MergeBZOs(FieldArray):
         raise ValueError("Argument must be array of objects of the same type and shape")
 
 
+    # Initialize output BZO
     OutShape = tuple(shape1)+tuple(shape0)
-
     Out = BZO(shape=OutShape)
 
-
-
-
-    ### Construct IndList
-
-
+    # Create new BZO
     SliceTuple=tuple(slice(x) for x in shape1)
 
+    # Iterate over elements in FieldArray
     for n in range(0,N_elements):
         field = FlatArray[n]
 
