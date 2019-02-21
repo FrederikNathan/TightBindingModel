@@ -75,26 +75,29 @@ X[1,2,3]=array([[1,2],[3,4]])
 The (i,j,k)th of a BZO object A can be accessed and set by calling A[i,j,k] (also generalizes to more dimensions). If BZO A is initially empty, 
 
 #### Call
-The value of a BZO can be evaluated at crystal momentum k, or at an array of crystal momenta Karray by calling the BZO: F(k) = \sum_{abc} F_{abc} e^{-i (aq_1 +bq_2 + cq_3) \cdot k}.
+Evaluates BZO at crystal momenta given as argument, such that BZO(k) gives F(k)
+
+k can also be an array of crystal momenta. For efficient simultaneous calculation of a large number of k-points, use VectorSpan format as input (see doc). 
+
+#### Slice 
+Returns slice of BZO such that, with Out=BZO.slice(Indices), Out(k)
+= BZO(k)[Indices]. Here indices can be numbers or slices. 
 
 #### Arithmetics
 Multiplication, addition and subtraction are defined between BZOs of the same shape. Here the operation returns the corresponding BZO. I.e., if A and B are the BZO representing the BZ field F(k) and G(k), A*B represents F(k)*G(k). The product of two BZOs is computed efficiently from IndList and ObjList. 
 
 Moreover, scalar multiplication and division are defined. In Hamiltonian and Scalar subclasses, a scalar Scalar addition are also defined. 
 
+#### MergeBZOs(BZOarray)
+Convert an array of BZO's into a single BZO. The input BZO's must be of the same type and shape. The Output BZO is an array of shape
+shape(BZOarray), such that
+
+Out[a,b,c,i,j] = BZOArray[i,j][a,b,c]
+
+#### ObjList(), IndList()
+These methods return ObjList and IndList, respectively. Use this to directly access the raw data of the BZO in an efficient way. 
+
 ### Advanced methods:
 
-#### NNZ()
-Returns number of nonzero harmonics (i.e. len(IndList)). 
-
-#### ObjList()
-Returns ObjList (ie. sorted list with Harmonics)
-
-#### IndList()
-Returns IndList (i.e. sorted list with planewaves corresponding to harmonics)
-
-More to come...
-# TightbindingModel2
-# TightbindingModel2
-
-# Test test
+#### Gradient
+Computes BZO corresponding to the gradient \partial _{k_i}F(k)
