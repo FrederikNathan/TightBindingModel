@@ -45,20 +45,12 @@ A BZO can be defined in 3 different ways
 #### Method 1: 
 The BZO can be generated from an IndList and ObjList generated previously:
 
-A = IndList
-
-B = ObjList
-
-X = BZO(A,B)
+X = BZO(IndList,ObjList)
 
 #### Method 2: 
 The BZO is generated from an (m_1 x ... m_n) array of BZO's. Example:
 
-A=<BZO_1>
-
-B=<BZO_2>
-
-C=array([A,B])
+C=array([BZO_1_,BZO_2_])
 
 X=BZO(C)
 
@@ -67,15 +59,15 @@ The BZO is defined as an empty object, and harmonics can be set afterwards. Here
 
 X=BZO(shape=(2,2),dtype=float)
 
-X[1,2,3]=array([[1,2],[3,4]])
+The elements of X can subsequently be set, using X[i,j,k]=Mat, or X[i,j,k][a,b]=y, where Mat is a 2x2 matrix, and y is a scalar. 
 
 
-##Useful methods 
+### Useful methods 
 
 ### Arithmetics
-Multiplication, addition and subtraction are defined between BZOs of the same shape. Here the operation returns the corresponding BZO. I.e., if A and B are the BZO representing the BZ field F(k) and G(k), A*B represents F(k)*G(k). The product of two BZOs is computed efficiently from IndList and ObjList. 
+Multiplication, addition and subtraction are defined between BZOs of the same shape. Here the operation returns the corresponding BZO. I.e., if A and B are the BZO representing the BZ field F(k) and G(k), A*B represents F(k)*G(k). Sums and products of BZOs are computed efficiently from IndList and ObjList. 
 
-Moreover, scalar multiplication and division are defined. In Hamiltonian and Scalar subclasses, a scalar Scalar addition are also defined. 
+Moreover, scalar multiplication and division are defined.
 
 ### MergeBZOs(BZOarray)
 Convert an array of BZO's into a single BZO. The input BZO's must be of the same type and shape. The Output BZO is an array of shape
@@ -85,14 +77,14 @@ Out[a,b,c,i,j] = BZOArray[i,j][a,b,c]
 
 ### ObjList(), IndList()
 These methods return ObjList and IndList, respectively. Use this to directly access the raw data of the BZO in an efficient way. 
+ 
+### Gradient()
+Computes BZO corresponding to the gradient \partial _{k_i}F(k). This is very easy to compute from ObjList and IndList
+ 
+### slice()
+Returns slice of a multi-dimensional BZO such that, with
+Out=BZO.slice(Indices), Out(k) = BZO(k)[Indices]. Here indices can
+be numbers or slices.
 
 
-### Gradient
-Computes BZO corresponding to the gradient \partial _{k_i}F(k)
-
-
-
-### Slice 
-Returns slice of BZO such that, with Out=BZO.slice(Indices), Out(k)
-= BZO(k)[Indices]. Here indices can be numbers or slices. 
 
