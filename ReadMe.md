@@ -1,5 +1,5 @@
 # TightBindingModel
-Python module for constructing and analyzing tight-binding models in solid-state physics (in progress)
+Python module for constructing and analyzing tight-binding models in solid-state physics. 
 
 The main module is called TightBindingModel (TBM). This contains the object representing tight-binding models (TBM.Hamiltonian), as well as general methods for these. It also contains definition objects that live in the Brillouin zone more generally (such as band structure, and general n x m-dimensional fields). 
 
@@ -19,7 +19,8 @@ TBM.OrbitalDimension = X
 where D is the physical dimension of the model, and X denotes the number of orbitals per unit cell. 
 
 ## BZO (Brillouin Zone Object): 
- 
+### NB! Set and get method accept floats. Also, do not work with int arguments. Fix in future. 
+
 Syntax: BZO(*args,shape=None,dtype=complex) 
  
 Fundamental object used to represent fields defined on a Brillouin zone. In particular, Hamiltonians are a subclass of a BZO. The BZO object stores the information of the field in a compact way, which enables fast execution of common methods.
