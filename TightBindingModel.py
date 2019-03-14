@@ -22,20 +22,13 @@ from numpy import ufunc as ufunc
 import numpy as np
 import inspect 
 import time
+import __main__ as main
+
 #import scipy.ufunc as ufunc
 
 Module=sys.modules[__name__]
 
-SX = array(([[0,1],[1,0]]),dtype=complex)
-SY = array(([[0,-1j],[1j,0]]),dtype=complex)
-SZ = array(([[1,0],[0,-1]]),dtype=complex)
-I2 = array(([[1,0],[0,1]]),dtype=complex)
-#
-#Dimension = 3
-#OribtalDimension= 2
-
-
-
+DIMENSION = None
 
 def CheckEnvironmentVars():
     if not ("Dimension" in globals() and "OrbitalDimension" in globals()):
@@ -49,13 +42,12 @@ def CheckLattice():
         raise NameError("Lattice must be a lattice object.")
 
 
-
 class BZO:
     """
     BZO (Brillouin Zone Object):
     
     Syntax: BZO(*args,shape=None,dtype=complex) Fundamental object used to
-    represent fields defined on a Brillouin zone. `.
+    represent fields defined on a Brillouin zone. 
     
     Any field on the BZ is a periodic function of crystal momentum, and
     can be decomposed into discrete harmonics (a Fourier series):
@@ -106,10 +98,10 @@ class BZO:
     """
 
 
-    def __init__(self,*args,shape=None,dtype=complex):
+    def __init__(self,*args,shape=None,dtype=complex,Dimension=None):
 
-        # Check that Dimension and OrbitalDimension are set before doing anything
-        CheckEnvironmentVars()
+        # Check that Dimension set before doing anything
+        
 
         ArgV=[arg for arg in args]
 
@@ -120,7 +112,9 @@ class BZO:
 
             if not shape==None:
                 raise ValueError("Shape cannot be defined, as it is set from the first argument")
-
+                
+            if not Dimension == None:
+                raise ValueError("Dimension argument is disregarded, since it set by the input")
             [IndList,ObjList]=ArgV
 
             # Set intrinsic parameters
@@ -140,6 +134,9 @@ class BZO:
             if not shape==None:
                 raise ValueError("Shape cannot be defined, as it is set from the first argument")
 
+            if not Dimension == None:
+                raise ValueError("Dimension argument is disregarded, since it set by the input")
+                
             Obj = MergeBZOs(ArgV[0])
 
             # Set intrinsic parameters
@@ -156,10 +153,21 @@ class BZO:
 
         elif len(ArgV)==0:
             # Method 3: Create empty BZO
+            
+            # Check that dimension is set, if not specified
+            if Dimension == None:
+     
+                try:
+                    Dimension = DIMENSION
+                except:
+                    raise NameError("Dimension must be specified explicitly, or set using DIMENSION")
+                    
 
             if not (type(shape)==tuple or type(shape)==int):
                 raise ValueError("Shape must be given by an integer or a tuple")
-
+            if type(shape)==int:
+                shape=(shape,)
+                
             #Set intrinsic parameters
             self.__Dimension=Dimension
             self.__shape=shape
@@ -175,7 +183,10 @@ class BZO:
             # Otherwise raise error
             raise ValueError("BZO must be defined either from (IndList,ObjList), from array of BZOs or as an empty BZO")
 
-
+        if not (type(Dimension)==int and Dimension>=0):
+            raise ValueError("Dimension must be a nonnegative integer")
+            
+            
     # =========================================================================
     # 1: Intrinsic methods and objects (methods needed for BZO to function)
     # =========================================================================
@@ -276,11 +287,6 @@ class BZO:
 
         return BuiltinSum((Ind[0][n]*self.__IndexCounter**(self.__Dimension-n-1) for n in range(0,self.__Dimension)))
 
-    def __CheckIndices(self,Index):
-        # Checks that an index in IndList is a tuple of length self.__Dimension
-        
-        if not len(Index) == self.__Dimension:
-            raise IndexError("Field is indiced by %d integers. Index given is %s"%(self.__Dimension,str(Index)))
 
     def __FindIndex(self,*Index):
         """ 
@@ -289,9 +295,9 @@ class BZO:
         obtained by inserting Index in IndexList (while maintaining ordering
         wrt NumList)
         """
-
-        # Check that index has right format
-        self.__CheckIndices(*Index)
+#
+#        # Check that index has right format
+#        self.__CheckIndices(*Index)
 
         # Find the integer corresponding to Index, using __IndToNum
         Num=self.__IndToNum(*Index)
@@ -507,7 +513,7 @@ class BZO:
     # 2: Basic methods (get, set, print, call)
     # =========================================================================
     
-    def __getitem__(self,*Index):
+    def __getitem__(self,Index):
         """ 
         Return ObjList[z] where IndexList[z]=Index. If IndexList does not 
         contain Index, return self.__Zero (See below for definition). 
@@ -518,8 +524,10 @@ class BZO:
         
         """
         
+        Index = self.__IndexParser(Index)
         # Find z where IndexList[z]=Index        
-        n = self.__FindIndex(*Index)
+        
+        n = self.__FindIndex(Index)
 
 
         if n>=0 :
@@ -529,9 +537,39 @@ class BZO:
 
         else:
             # Otherwise, return zero object, with called index set to Index
-            self.__Zero.CalledIndex=tuple(*Index)
+            self.__Zero.CalledIndex=tuple(Index)
 
             return self.__Zero
+
+    def __IndexParser(self,Input):
+        if type(Input)==int and self.Dimension()==1:
+            Input =  (Input,)
+        
+        
+        elif type(Input)==tuple:
+        
+            if not len(Input) == self.__Dimension:
+                raise IndexError("Field is indiced by %d integers. Index given is %s"%(self.__Dimension,str(Input)))
+            
+            else:
+                pass
+        
+        else:
+            if self.Dimension()==1:
+                raise ValueError("Index must be an integer")
+            else:
+                raise ValueError(f"Index must be a sequence of {self.Dimension()} integers")
+        
+        X = BuiltinSum((type(x)!=int for x in Input))
+        
+        if X>0:
+            raise ValueError("Indices must be integers")
+        
+        else:
+            return Input
+        
+            
+
 
     def __setitem__(self,Index,Value):
         """ 
@@ -540,11 +578,14 @@ class BZO:
         corresponding empty slot in ObjList), and then sets sets
         self.__ObjList[z] = Value, where IndList[z]=Index       
         """
-        
+
         # Check that the value has the right shape and format
         
+        Index = self.__IndexParser(Index)
         Value=array(Value)
+        
         if (not type(Value)==ndarray) or (not shape(Value)==self.__shape):
+            
             raise ValueError("Assigned value must be ndarray of shape %s"%str(self.__shape))
 
         # Determine where ObjList should be updated. 
@@ -574,12 +615,11 @@ class BZO:
     def __call__(self,*args):
 
         """ 
-        OutputArray = BZO(*CrystalMomenta)
 
         Evaluates BZO at crystal momenta given as argument. Input must be in
         either the Array format, or the VectorSpan format (see below). The
         latter is very efficient, if one needs to calculate a large number of
-        k-points in a regular array.
+        k-points in a direct-product array.
         
         Array format:
         
@@ -979,6 +1019,12 @@ class BZO:
 
         return BZO(array(OutList))
 
+    def Dimension(self):
+        """
+        Return dimension of BZO
+        """
+        
+        return self.__Dimension
 
     def shape(self):
         """ 
@@ -1091,7 +1137,6 @@ class Hamiltonian(BZO):
             BZO.__init__(self,shape=(OrbitalDimension,OrbitalDimension))
             self._BZO__Dimension = Dimension
             self.SetLists(Obj.IndList(),Obj.ObjList())
-#            self._BZO__Zero = BZO.__ZeroObject(self)
 
 
             if not self.IsHermitian():
@@ -1114,7 +1159,6 @@ class Hamiltonian(BZO):
             raise ValueError("BZO can only take a single array of other BZO's as argument")
 
 
-#        BZO.__init__(self,shape=(OrbitalDimension,OrbitalDimension))
 
 
     def Bands(self,Karray):
@@ -1169,7 +1213,7 @@ class Hamiltonian(BZO):
 
 
 class Scalar(BZO):
-    """ Sxcalar-valued function on the BZ"""
+    """ Scalar-valued function on the BZ"""
 
     def __init__(self,*args):
         if len(args)==2:
@@ -1190,10 +1234,6 @@ class Scalar(BZO):
         if not (type(y)==Module.Scalar or type(y)==Module.BZO or type(y)==Module.Hamiltonian):
 
             Out = Scalar(self.IndList(),self.ObjList())
-#
-#            Out._BZO__ObjList=self.ObjList()
-#            Out._BZO__IndList=self.IndList()
-#
 
             Out[(0,)*Dimension]=Out[(0,)*Dimension]*1+y
 
